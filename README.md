@@ -10,4 +10,4 @@ pip install -e .
 
 ## Usage
 Please check the example notebook at
-[sampler_examper](https://github.com/CederGroupHub/chgnet/blob/main/examples/fine_tuning.ipynb)
+[sampler_examper](https://github.com/BowenD-UCB/MDsampler/blob/main/sampler_example.ipynb)
