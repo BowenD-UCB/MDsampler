@@ -81,46 +81,63 @@ class Sampler(nn.Module):
             wcss_list.append(wcss)
         return test_num_outs, wcss_list
 
-    def kmeans(self, x, num_clusters, distance="euclidean"):
+    def kmeans(
+        self,
+        x,
+        num_clusters: int,
+        num_trial: int = 3,
+        distance: str = "euclidean"
+    ):
         """K-means algorithm using PyTorch
         Args:
             x(tensor): tensor of shape [batch, feature_dim]
             num_clusters:
             distance:
         Returns:
-            centroids, labels, wcss.
+            centroids, labels
         """
         # Initialize centroids randomly from the data points
         perm = torch.randperm(x.size(0))
         centroids = x[perm[:num_clusters]]
+        min_wcss = 999999
+        best_centroids, best_labels = None, None
+        for _ in range(num_trial):
+            while True:
+                # Compute distances from centroids to all data points
+                if distance == "euclidean":
+                    distances = torch.norm(x[:, None] - centroids, dim=2)
+                else:
+                    raise NotImplementedError
 
-        while True:
-            # Compute distances from centroids to all data points
-            if distance == "euclidean":
-                distances = torch.norm(x[:, None] - centroids, dim=2)
-            else:
-                raise NotImplementedError
+                # Assign each data point to the closest centroid
+                labels = torch.argmin(distances, dim=1)
 
-            # Assign each data point to the closest centroid
-            labels = torch.argmin(distances, dim=1)
+                # Compute new centroids as the mean of all data points assigned to them
+                new_centroids = torch.stack(
+                    [x[labels == i].mean(0) for i in range(num_clusters)]
+                )
 
-            # Compute new centroids as the mean of all data points assigned to them
-            new_centroids = torch.stack(
-                [x[labels == i].mean(0) for i in range(num_clusters)]
-            )
+                # If centroids haven't changed, we've converged
+                if torch.all(new_centroids == centroids):
+                    break
+                centroids = new_centroids
 
-            # If centroids haven't changed, we've converged
-            if torch.all(new_centroids == centroids):
-                break
-            centroids = new_centroids
+                # Compute WCSS
+                wcss = torch.sum((x - centroids[labels]) ** 2)
+                if wcss < min_wcss:
+                    best_centroids = centroids
+                    best_labels = labels
+                    min_wcss = wcss
 
-        # Compute WCSS
-        wcss = torch.sum((x - centroids[labels]) ** 2)
-        return centroids, labels, wcss
+        return best_centroids, best_labels
 
-    def get_near_centroid_vectors(self, tensors: torch.Tensor, num_out: int):
+    def get_near_centroid_vectors(
+        self,
+        tensors: torch.Tensor,
+        num_out: int
+    ):
         # Run K-means clustering
-        centroids, labels, wcss = self.kmeans(tensors, num_out)
+        centroids, labels = self.kmeans(tensors, num_out)
 
         # Select the most representative tensors
         near_centroid_tensors = []
@@ -139,4 +156,9 @@ class Sampler(nn.Module):
             # Add to the list
             near_centroid_tensors.append(closest_vector)
             near_centroid_indices.append(cluster_indices[closest_idx_in_cluster].item())
-        return near_centroid_tensors, near_centroid_indices, wcss.item()
+
+        # Calculate the distance to the near centroid tensors for WCSS
+        near_centroid_tensors = torch.stack(near_centroid_tensors)
+        wcss_near_centroid = torch.sum((tensors - near_centroid_tensors[labels]) ** 2)
+
+        return near_centroid_tensors, near_centroid_indices, wcss_near_centroid.item()
