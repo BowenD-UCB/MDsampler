@@ -51,7 +51,39 @@ class Sampler(nn.Module):
         else:
             self.features = torch.stack((self.features, crystal_features), dim=1)
 
-    def get_sampled_structures(self, num_out: int = 50, return_wcss=False):
+    def get_sampled_indices(
+        self,
+        num_out: int = 50,
+        return_wcss=False
+    ):
+        """Perform sampling on list of structures using CGCNN featurizer
+        Args:
+            num_out(int): number of output structures to be selected
+
+        return:
+            selected_indices(List): the indices of the structures that are sampled
+            wcss(float):
+                WCSS stands for "Within Cluster Sum of Squares".
+                It's a measure used in k-means clustering and other similar algorithms
+                to evaluate the quality of the clustering.
+                The smaller means the better coverage of selected structures as a
+                statistical representative for the original input distribution.
+        """
+        sampled_feas, sampled_indices, wcss = self.get_near_centroid_vectors(
+            tensors=self.features,
+            num_out=num_out,
+        )
+        if return_wcss:
+            return sampled_indices, wcss
+        else:
+            return sampled_indices
+
+    def get_sampled_structures(
+        self,
+        num_out: int = 50,
+        return_wcss=False,
+        verbose=True,
+    ):
         """Perform sampling on list of structures using CGCNN featurizer
         Args:
             num_out(int): number of output structures to be selected
@@ -65,12 +97,11 @@ class Sampler(nn.Module):
                 The smaller means the better coverage of selected structures as a
                 statistical representative for the original input distribution.
         """
-        sampled_feas, sampled_indices, wcss = self.get_near_centroid_vectors(
-            tensors=self.features,
-            num_out=num_out,
-        )
-        print(f"wcss = {wcss}")
-        print(f"returned the {sampled_indices} structures")
+        sampled_indices, wcss = self.get_sampled_indices(num_out=num_out,
+                                                         return_wcss=True)
+        if verbose:
+            print(f"wcss = {wcss}")
+            print(f"returned the {sampled_indices} structures")
         if return_wcss:
             return [self.structures[i] for i in sampled_indices], wcss
         else:
