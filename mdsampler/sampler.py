@@ -26,14 +26,21 @@ class Sampler(nn.Module):
 
     def add_structures(self,
                        structures: list[Structure] | Structure,
-                       batch_size: int = 128):
+                       batch_size: int = 128,
+                       verbose: bool = None
+                       ):
         """Add structures to the sampler, and the sampler also stores their crystal feas
         Args:
             structures(List): list of structures
             batch_size(int): batch size for feature generator
         """
+        if verbose is None:
+            if len(structures) >= 100:
+                verbose = True
+            else:
+                verbose = False
         crystal_features = self.feature_gen.get_crystal_fea(
-            structures, batch_size=batch_size
+            structures, batch_size=batch_size, verbose=verbose
         )
         if isinstance(structures, Structure):
             self.structures.append(structures)

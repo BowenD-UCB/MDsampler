@@ -15,6 +15,7 @@ from pymatgen.core.periodic_table import get_el_sp
 from pymatgen.core.structure import Structure
 from torch import Tensor
 from torch.autograd import Variable
+from tqdm import tqdm
 
 from mdsampler.cgcnn.data import (
     AtomCustomJSONInitializer,
@@ -96,6 +97,7 @@ class CGCNN(nn.Module):
         self,
         structure: Structure | list[Structure],
         batch_size: int = 128,
+        verbose=False,
     ) -> Tensor:
         """CGCNN predict formatio nenergy from pymatgen structure.
 
@@ -117,16 +119,28 @@ class CGCNN(nn.Module):
             return output.detach().cpu()
 
         outputs = []
-        for i in range(0, len(structure), batch_size):
-            batch_structures = structure[i: i + batch_size]
-            inp = self.input_generator.generate_inputs(batch_structures)
-            inp = (
-                inp[0].to(self.device),
-                inp[1].to(self.device),
-                inp[2].to(self.device),
-                inp[3]
-            )
-            outputs.append(self.model(*inp).detach().cpu())
+        if verbose is False:
+            for i in range(0, len(structure), batch_size):
+                batch_structures = structure[i: i + batch_size]
+                inp = self.input_generator.generate_inputs(batch_structures)
+                inp = (
+                    inp[0].to(self.device),
+                    inp[1].to(self.device),
+                    inp[2].to(self.device),
+                    inp[3]
+                )
+                outputs.append(self.model(*inp).detach().cpu())
+        else:
+            for i in tqdm(range(0, len(structure), batch_size)):
+                batch_structures = structure[i: i + batch_size]
+                inp = self.input_generator.generate_inputs(batch_structures)
+                inp = (
+                    inp[0].to(self.device),
+                    inp[1].to(self.device),
+                    inp[2].to(self.device),
+                    inp[3]
+                )
+                outputs.append(self.model(*inp).detach().cpu())
         return torch.cat(outputs)
 
 
