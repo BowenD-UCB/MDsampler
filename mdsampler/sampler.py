@@ -14,21 +14,41 @@ class Sampler(nn.Module):
     most representative structures in an ensemble.
     """
 
-    def __init__(self, model="CGCNN"):
+    def __init__(self, model="CGCNN", use_device=None):
         super().__init__()
+        self.device = use_device or ("cuda" if torch.cuda.is_available() else "cpu")
         if model == "CGCNN":
-            self.feature_gen = CGCNN()
+            self.feature_gen = CGCNN(use_device=self.device)
         else:
             raise NotImplementedError
+        self.structures = []
+        self.features = None
 
-    def sample_structures(
-        self, structures: list[Structure], num_out: int = 50, batch_size: int = 128
-    ):
-        """Perform sampling on list of structures using CGCNN featurizer
+    def add_structures(self,
+                       structures: list[Structure] | Structure,
+                       batch_size: int = 128):
+        """Add structures to the sampler, and the sampler also stores their crystal feas
         Args:
             structures(List): list of structures
+            batch_size(int): batch size for feature generator
+        """
+        crystal_features = self.feature_gen.get_crystal_fea(
+            structures, batch_size=batch_size
+        )
+        if isinstance(structures, Structure):
+            self.structures.append(structures)
+        else:
+            self.structures += structures
+        if self.features is None:
+            self.features = crystal_features
+        else:
+            self.features = torch.stack((self.features, crystal_features), dim=1)
+
+    def get_sampled_structures(self, num_out: int = 50, return_wcss=False):
+        """Perform sampling on list of structures using CGCNN featurizer
+        Args:
             num_out(int): number of output structures to be selected
-            batch_size(int): batch size for CGCNN
+
         return:
             selected_structures(List)
             wcss(float):
@@ -38,44 +58,37 @@ class Sampler(nn.Module):
                 The smaller means the better coverage of selected structures as a
                 statistical representative for the original input distribution.
         """
-        crystal_features = self.feature_gen.get_crystal_fea(
-            structures, batch_size=batch_size
-        )
         sampled_feas, sampled_indices, wcss = self.get_near_centroid_vectors(
-            tensors=crystal_features,
+            tensors=self.features,
             num_out=num_out,
         )
         print(f"wcss = {wcss}")
         print(f"returned the {sampled_indices} structures")
-        return [structures[i] for i in sampled_indices], wcss
+        if return_wcss:
+            return [self.structures[i] for i in sampled_indices], wcss
+        else:
+            return [self.structures[i] for i in sampled_indices]
 
     def get_wcss_list(
         self,
-        structures: list[Structure],
         test_num_outs: list = None,
-        batch_size: int = 128,
     ):
         """Perform screening of WCSS on given set of outputs
         this is used to see if the num_out for the current input set of structures are
         representative enough for a healthy distribution
         Args:
-            structures(List): list of structures
-            test_num_outs(List): number of output structures to be selected
-            batch_size(int): batch size for CGCNN
+            test_num_outs(List): List of number of output structures to be selected
         return:
             test_num_outs(List): the num_out that has been tested
             wcss_list(List): the resulted wcss for each num_out.
         """
-        crystal_features = self.feature_gen.get_crystal_fea(
-            structures, batch_size=batch_size
-        )
         if test_num_outs is None:
             test_num_outs = np.linspace(1, 100, 8, dtype=int)
 
         wcss_list = []
         for num_out in test_num_outs:
             sampled_feas, sampled_indices, wcss = self.get_near_centroid_vectors(
-                tensors=crystal_features,
+                tensors=self.features,
                 num_out=num_out,
             )
             wcss_list.append(wcss)

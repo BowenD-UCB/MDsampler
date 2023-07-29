@@ -42,6 +42,7 @@ class CGCNN(nn.Module):
         radius: float = 8,
         dmin: float = 0,
         step: float = 0.2,
+        use_device=None
     ):
         """Init CGCNN.
 
@@ -57,6 +58,7 @@ class CGCNN(nn.Module):
         super().__init__()
         checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
         self.model_args = argparse.Namespace(**checkpoint["args"])
+        self.device = use_device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         self.input_generator = CGCNNInput(
             max_num_nbr=max_num_nbr, radius=radius, dmin=dmin, step=step
@@ -67,7 +69,7 @@ class CGCNN(nn.Module):
             n_h=self.model_args.n_h,
             n_conv=self.model_args.n_conv,
             h_fea_len=self.model_args.h_fea_len,
-        )
+        ).to(self.device)
         self.normalizer = CGCNNNormalizer(torch.zeros(3))
         self.model.load_state_dict(checkpoint["state_dict"])
         self.normalizer.load_state_dict(checkpoint["normalizer"])
@@ -82,9 +84,11 @@ class CGCNN(nn.Module):
 
         """
         self.model.eval()
-        inp = self.input_generator.generate_input(structure)
-        inp = (*inp, [torch.LongTensor(np.arange(structure.num_sites))])
-        print(inp)
+        inp = (
+            i.to(self.device) for i in
+            self.input_generator.generate_input(structure)
+        )
+        inp = (*inp, [torch.LongTensor(np.arange(structure.num_sites)).to(self.device)])
         output = self.model.get_prediction(*inp)
         return self.normalizer.denorm(output).data.cpu().numpy()[0][0]
 
@@ -103,15 +107,25 @@ class CGCNN(nn.Module):
         """
         self.model.eval()
         if isinstance(structure, Structure):
-            inp = self.input_generator.generate_input(structure)
-            inp = (*inp, [torch.LongTensor(np.arange(structure.num_sites))])
+            inp = (i.to(self.device) for i in
+                   self.input_generator.generate_input(structure)
+                   )
+            inp = (*inp,
+                   [torch.LongTensor(np.arange(structure.num_sites)).to(self.device)]
+                   )
             output = self.model(*inp)
             return output.detach().cpu()
 
         outputs = []
         for i in range(0, len(structure), batch_size):
-            batch_structures = structure[i : i + batch_size]
+            batch_structures = structure[i: i + batch_size]
             inp = self.input_generator.generate_inputs(batch_structures)
+            inp = (
+                inp[0].to(self.device),
+                inp[1].to(self.device),
+                inp[2].to(self.device),
+                inp[3]
+            )
             outputs.append(self.model(*inp).detach().cpu())
         return torch.cat(outputs)
 
