@@ -53,7 +53,7 @@ class Sampler(nn.Module):
         if self.features is None:
             self.features = crystal_features
         else:
-            self.features = torch.stack((self.features, crystal_features), dim=0)
+            self.features = torch.cat((self.features, crystal_features), dim=0)
 
     def add_data_points(
         self,
