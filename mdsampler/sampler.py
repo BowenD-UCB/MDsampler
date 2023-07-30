@@ -32,7 +32,7 @@ class Sampler(nn.Module):
         structures: list[Structure] | Structure,
         batch_size: int = 128,
         verbose: bool = None
-        ):
+    ):
         """Add structures to the sampler, and the sampler also stores their crystal feas
         Args:
             structures(List): list of structures
@@ -64,7 +64,7 @@ class Sampler(nn.Module):
         magmoms: list = None,
         batch_size: int = 128,
         verbose: bool = None
-        ):
+    ):
         """Add structures to the sampler, and the sampler also stores their crystal feas
         Args:
             structures(List): list of structures
@@ -144,14 +144,54 @@ class Sampler(nn.Module):
         else:
             return [self.structures[i] for i in sampled_indices]
 
+    def save_sampled_data(
+        self,
+        num_out: int,
+        save_name: str = 'sampled_data.p',
+        targets: str = 'ef',
+    ):
+        """Saved sampled data using pickle
+        Args:
+            num_out(int): number of output structures to be selected
+            save_name(str): name to save the file
+            targets(str): training target
+                Default = 'ef'
+
+        return:
+            None
+        """
+        import pickle
+        sampled_indices = self.get_sampled_indices(num_out=num_out, return_wcss=False)
+        if 's' in targets:
+            sampled_stresses = [self.stresses[i] for i in sampled_indices]
+        else:
+            sampled_stresses = None
+        if 'm' in targets:
+            sampled_magmoms = [self.magmoms[i] for i in sampled_indices]
+        else:
+            sampled_magmoms = None
+        saved_dataset = {
+            'structures': [self.structures[i] for i in sampled_indices],
+            'energies': [self.energies[i] for i in sampled_indices],
+            'forces': [self.forces[i] for i in sampled_indices],
+            'stresses': sampled_stresses,
+            'magmoms': sampled_magmoms,
+        }
+        with open(save_name, 'wb') as file:
+            pickle.dump(saved_dataset, file)
+        print(f"Sampled file saved to {save_name}")
+        return None
+
     def get_sampled_CHGNet_dataset(
         self,
         num_out: int,
         targets='ef',
     ):
-        """Perform sampling on list of structures using CGCNN featurizer
+        """Get sampled data in form of CHGNet dataset
         Args:
             num_out(int): number of output structures to be selected
+            targets(str): training target
+                Default = 'ef'
 
         return:
             CHGNet_dataset
