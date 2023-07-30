@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from pymatgen.core import Structure
-
 from mdsampler.cgcnn import CGCNN
 
 
@@ -22,13 +21,18 @@ class Sampler(nn.Module):
         else:
             raise NotImplementedError
         self.structures = []
+        self.energies = []
+        self.forces = []
+        self.stresses = []
+        self.magmoms = []
         self.features = None
 
-    def add_structures(self,
-                       structures: list[Structure] | Structure,
-                       batch_size: int = 128,
-                       verbose: bool = None
-                       ):
+    def add_structures(
+        self,
+        structures: list[Structure] | Structure,
+        batch_size: int = 128,
+        verbose: bool = None
+        ):
         """Add structures to the sampler, and the sampler also stores their crystal feas
         Args:
             structures(List): list of structures
@@ -50,6 +54,39 @@ class Sampler(nn.Module):
             self.features = crystal_features
         else:
             self.features = torch.stack((self.features, crystal_features), dim=1)
+
+    def add_data_points(
+        self,
+        structures: list[Structure] | Structure,
+        energies: list,
+        forces: list,
+        stresses: list = None,
+        magmoms: list = None,
+        batch_size: int = 128,
+        verbose: bool = None
+        ):
+        """Add structures to the sampler, and the sampler also stores their crystal feas
+        Args:
+            structures(List): list of structures
+            energies(list): list of energy labels
+            forces(list): list of force labels
+            stresses(list): list of stress labels
+            magmoms(list): list of magmom labels
+            batch_size(int): batch size for feature generator
+        """
+        self.add_structures(structures=structures,
+                            batch_size=batch_size,
+                            verbose=verbose)
+        self.energies += energies
+        self.forces += forces
+        if stresses is not None:
+            self.stresses += stresses
+        else:
+            self.stresses += [None] * len(structures)
+        if magmoms is not None:
+            self.magmoms += magmoms
+        else:
+            self.magmoms += [None] * len(structures)
 
     def get_sampled_indices(
         self,
@@ -106,6 +143,38 @@ class Sampler(nn.Module):
             return [self.structures[i] for i in sampled_indices], wcss
         else:
             return [self.structures[i] for i in sampled_indices]
+
+    def get_sampled_CHGNet_dataset(
+        self,
+        num_out: int,
+        targets='ef',
+    ):
+        """Perform sampling on list of structures using CGCNN featurizer
+        Args:
+            num_out(int): number of output structures to be selected
+
+        return:
+            CHGNet_dataset
+        """
+        from chgnet.data.dataset import StructureData
+        sampled_indices = self.get_sampled_indices(num_out=num_out, return_wcss=False)
+        if 's' in targets:
+            sampled_stresses = [self.stresses[i] for i in sampled_indices]
+        else:
+            sampled_stresses = None
+        if 'm' in targets:
+            sampled_magmoms = [self.magmoms[i] for i in sampled_indices]
+        else:
+            sampled_magmoms = None
+        dataset = StructureData(
+            structures=[self.structures[i] for i in sampled_indices],
+            energies=[self.energies[i] for i in sampled_indices],
+            forces=[self.forces[i] for i in sampled_indices],
+            stresses=sampled_stresses,
+            magmoms=sampled_magmoms,
+        )
+
+        return dataset
 
     def get_wcss_list(
         self,
