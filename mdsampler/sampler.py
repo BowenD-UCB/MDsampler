@@ -27,6 +27,26 @@ class Sampler(nn.Module):
         self.magmoms = []
         self.features = None
 
+    def add_crystal_feas(
+        self,
+        crystal_feas: list
+    ):
+        """add crystal features to the sampler
+        Args:
+            crystal_feas (list): list of np arrays or torch tensors
+        """
+        if isinstance(crystal_feas[0], np.ndarray):
+            crystal_features = torch.from_numpy(np.stack(crystal_feas))
+        elif isinstance(crystal_feas[0], torch.Tensor):
+            crystal_features = torch.stack(crystal_feas)
+        else:
+            raise Exception("crystal_feas should be a list of np array or torch Tensor")
+        if self.features is None:
+            self.features = crystal_features
+        else:
+            self.features = torch.cat((self.features, crystal_features), dim=0)
+        return None
+
     def add_structures(
         self,
         structures: list[Structure] | Structure,
@@ -91,7 +111,7 @@ class Sampler(nn.Module):
     def get_sampled_indices(
         self,
         num_out: int = 50,
-        return_wcss=False
+        return_wcss = False
     ):
         """Perform sampling on list of structures using CGCNN featurizer
         Args:
@@ -111,9 +131,9 @@ class Sampler(nn.Module):
             num_out=num_out,
         )
         if return_wcss:
-            return sampled_indices, wcss
+            return sorted(sampled_indices), wcss
         else:
-            return sampled_indices
+            return sorted(sampled_indices)
 
     def get_sampled_structures(
         self,
@@ -148,7 +168,7 @@ class Sampler(nn.Module):
         self,
         num_out: int,
         save_name: str = 'sampled_data.p',
-        targets: str = 'ef',
+        targets: str = 'efsm',
     ):
         """Saved sampled data using pickle
         Args:
