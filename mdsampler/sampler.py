@@ -266,44 +266,51 @@ class Sampler(nn.Module):
         x,
         num_clusters: int,
         num_trial: int = 3,
-        distance: str = "euclidean"
+        distance: str = "euclidean",
+        max_iters: int = 300,
+        tol: float = 1e-4
     ):
         """K-means algorithm using PyTorch
         Args:
-            x(tensor): tensor of shape [batch, feature_dim]
-            num_clusters:
-            distance:
+            x (tensor): tensor of shape [batch, feature_dim]
+            num_clusters (int): Number of clusters
+            num_trial (int): Number of trials to find the best initialization
+            distance (str): Distance metric, currently supports "euclidean"
+            max_iters (int): Maximum number of iterations for convergence
+            tol (float): Tolerance for centroid change, used to determine convergence
         Returns:
-            centroids, labels
+            best_centroids, best_labels
         """
-        # Initialize centroids randomly from the data points
-        perm = torch.randperm(x.size(0))
-        centroids = x[perm[:num_clusters]]
-        min_wcss = 999999
+        min_wcss = torch.inf
         best_centroids, best_labels = None, None
-        for _ in range(num_trial):
-            while True:
+        for trial in range(num_trial):
+            # Initialize centroids randomly from the data points
+            perm = torch.randperm(x.size(0))
+            centroids = x[perm[:num_clusters]].clone()
+            for _ in range(max_iters):
                 # Compute distances from centroids to all data points
                 if distance == "euclidean":
-                    distances = torch.norm(x[:, None] - centroids, dim=2)
+                    distances = torch.cdist(x, centroids,
+                                            p=2)  # More efficient for Euclidean distance
                 else:
                     raise NotImplementedError
 
                 # Assign each data point to the closest centroid
                 labels = torch.argmin(distances, dim=1)
 
-                # Compute new centroids as the mean of all data points assigned to them
+                # Compute new centroids
                 new_centroids = torch.stack(
                     [x[labels == i].mean(0) for i in range(num_clusters)]
                 )
 
-                # If centroids haven't changed, we've converged
-                if torch.all(new_centroids == centroids):
+                # Check for convergence (if centroids didn't change significantly)
+                centroid_shift = torch.norm(new_centroids - centroids, dim=1).sum()
+                if centroid_shift < tol:
                     break
                 centroids = new_centroids
 
-                # Compute WCSS
-                wcss = torch.sum((x - centroids[labels]) ** 2)
+                # Compute WCSS (Within-Cluster Sum of Square)
+                wcss = torch.sum((x - centroids[labels, None, :]) ** 2)
                 if wcss < min_wcss:
                     best_centroids = centroids
                     best_labels = labels
